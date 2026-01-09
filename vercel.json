@@ -1,6 +1,0 @@
-{
-  "buildCommand": "cd textmagic-pro && npm run build",
-  "outputDirectory": "textmagic-pro/.next",
-  "installCommand": "cd textmagic-pro && npm install",
-  "framework": "nextjs"
-}
