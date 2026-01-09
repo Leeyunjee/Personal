@@ -1,0 +1,10 @@
+# 1. GitHub에서 새 저장소 생성 (github.com/new)
+# 2. 로컬에서 실행:
+
+cd /home/user/Personal/textmagic-pro
+
+# GitHub 원격 저장소 추가
+git remote add github https://github.com/Leeyunjee/textmagic-pro.git
+
+# 푸시
+git push -u github main
