@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import Script from 'next/script';
 
 const PLANS = [
   {
@@ -13,7 +14,7 @@ const PLANS = [
       '하루 5회 사용',
       '모든 AI 도구 접근',
       '기본 처리 속도',
-      '이메일 지원'
+      '커뮤니티 지원'
     ]
   },
   {
@@ -49,10 +50,27 @@ export default function Pricing() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [processingPlan, setProcessingPlan] = useState(null);
+  const [paddleLoaded, setPaddleLoaded] = useState(false);
 
   useEffect(() => {
     checkAuth();
   }, []);
+
+  // Paddle 초기화
+  useEffect(() => {
+    if (paddleLoaded && window.Paddle) {
+      const clientToken = process.env.NEXT_PUBLIC_PADDLE_CLIENT_TOKEN;
+      const environment = process.env.NEXT_PUBLIC_PADDLE_ENVIRONMENT || 'sandbox';
+
+      if (clientToken) {
+        window.Paddle.Environment.set(environment);
+        window.Paddle.Initialize({
+          token: clientToken
+        });
+        console.log('Paddle initialized');
+      }
+    }
+  }, [paddleLoaded]);
 
   const checkAuth = async () => {
     try {
@@ -79,24 +97,41 @@ export default function Pricing() {
       return;
     }
 
+    // Paddle Price IDs (환경변수에서 가져옴)
+    const priceIds = {
+      pro: process.env.NEXT_PUBLIC_PADDLE_PRO_PRICE_ID,
+      business: process.env.NEXT_PUBLIC_PADDLE_BUSINESS_PRICE_ID
+    };
+
+    const priceId = priceIds[planId];
+
+    if (!priceId || !window.Paddle) {
+      alert('결제 설정이 완료되지 않았습니다. 관리자에게 문의하세요.');
+      return;
+    }
+
     setProcessingPlan(planId);
 
     try {
-      const res = await fetch('/api/stripe/checkout', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ plan: planId })
+      window.Paddle.Checkout.open({
+        items: [{ priceId, quantity: 1 }],
+        customer: {
+          email: user.email
+        },
+        customData: {
+          user_email: user.email,
+          user_id: user.id.toString()
+        },
+        settings: {
+          successUrl: `${window.location.origin}/dashboard?success=true`,
+          displayMode: 'overlay',
+          theme: 'light',
+          locale: 'ko'
+        }
       });
-
-      const data = await res.json();
-
-      if (data.url) {
-        window.location.href = data.url;
-      } else {
-        alert('결제 세션 생성에 실패했습니다. Stripe 설정을 확인해주세요.');
-      }
     } catch (error) {
-      alert('오류가 발생했습니다');
+      console.error('Paddle checkout error:', error);
+      alert('결제 창을 열 수 없습니다. 다시 시도해주세요.');
     } finally {
       setProcessingPlan(null);
     }
@@ -104,6 +139,12 @@ export default function Pricing() {
 
   return (
     <>
+      {/* Paddle.js 로드 */}
+      <Script
+        src="https://cdn.paddle.com/paddle/v2/paddle.js"
+        onLoad={() => setPaddleLoaded(true)}
+      />
+
       <header className="header">
         <div className="container header-content">
           <Link href="/" className="logo">
@@ -168,7 +209,7 @@ export default function Pricing() {
           </div>
 
           <div style={{ textAlign: 'center', marginTop: '48px', color: 'var(--gray-500)' }}>
-            <p>💳 안전한 결제 | 📧 7일 환불 보장 | 🔒 SSL 암호화</p>
+            <p>💳 안전한 결제 (Paddle) | 📧 7일 환불 보장 | 🌍 전 세계 결제 지원</p>
           </div>
         </div>
       </main>
