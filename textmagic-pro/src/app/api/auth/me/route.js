@@ -13,7 +13,7 @@ export async function GET() {
       );
     }
 
-    const usage = getUserUsage(user.id);
+    const usage = await getUserUsage(user.id);
 
     return NextResponse.json({
       user: {

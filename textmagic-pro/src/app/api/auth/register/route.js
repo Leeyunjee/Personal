@@ -15,7 +15,7 @@ export async function POST(request) {
     }
 
     // Check if user exists
-    const existingUser = getUser(email);
+    const existingUser = await getUser(email);
     if (existingUser) {
       return NextResponse.json(
         { error: '이미 등록된 이메일입니다' },
@@ -25,7 +25,7 @@ export async function POST(request) {
 
     // Create user
     const hashedPassword = await hashPassword(password);
-    const result = createUser(email, hashedPassword, name);
+    const result = await createUser(email, hashedPassword, name);
 
     // Generate token
     const token = generateToken(result.lastInsertRowid);
@@ -47,7 +47,7 @@ export async function POST(request) {
   } catch (error) {
     console.error('Registration error:', error);
     return NextResponse.json(
-      { error: '회원가입 중 오류가 발생했습니다' },
+      { error: '회원가입 중 오류가 발생했습니다: ' + error.message },
       { status: 500 }
     );
   }

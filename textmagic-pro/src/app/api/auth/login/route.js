@@ -15,7 +15,7 @@ export async function POST(request) {
     }
 
     // Find user
-    const user = getUser(email);
+    const user = await getUser(email);
     if (!user) {
       return NextResponse.json(
         { error: '이메일 또는 비밀번호가 올바르지 않습니다' },

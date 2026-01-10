@@ -31,7 +31,7 @@ export async function POST(request) {
     }
 
     // Check usage limit
-    const currentUsage = getUserUsage(user.id);
+    const currentUsage = await getUserUsage(user.id);
     const limit = PLAN_LIMITS[user.plan] || PLAN_LIMITS.free;
 
     if (currentUsage >= limit) {
@@ -56,8 +56,8 @@ export async function POST(request) {
     }
 
     // Log usage
-    incrementUsage(user.id);
-    logUsage(user.id, toolId);
+    await incrementUsage(user.id);
+    await logUsage(user.id, toolId);
 
     return NextResponse.json({
       success: true,

@@ -1,7 +1,7 @@
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import { cookies } from 'next/headers';
-import { getUser, getUserById } from './db';
+import { getUserById } from './db';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'textmagic-super-secret-key-change-in-production';
 
@@ -34,7 +34,7 @@ export async function getCurrentUser() {
   const payload = verifyToken(token);
   if (!payload) return null;
 
-  const user = getUserById(payload.userId);
+  const user = await getUserById(payload.userId);
   if (!user) return null;
 
   return {
@@ -47,10 +47,10 @@ export async function getCurrentUser() {
   };
 }
 
-export function getUserFromToken(token) {
+export async function getUserFromToken(token) {
   const payload = verifyToken(token);
   if (!payload) return null;
-  return getUserById(payload.userId);
+  return await getUserById(payload.userId);
 }
 
 export const PLAN_LIMITS = {

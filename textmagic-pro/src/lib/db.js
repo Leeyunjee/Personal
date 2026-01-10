@@ -1,83 +1,98 @@
-import Database from 'better-sqlite3';
-import path from 'path';
-import fs from 'fs';
+import { sql } from '@vercel/postgres';
 
-const dbPath = path.join(process.cwd(), 'data', 'textmagic.db');
+// 테이블 초기화 (첫 요청시 자동 실행)
+let initialized = false;
 
-// Ensure data directory exists
-const dataDir = path.dirname(dbPath);
-if (!fs.existsSync(dataDir)) {
-  fs.mkdirSync(dataDir, { recursive: true });
-}
+export async function initDB() {
+  if (initialized) return;
 
-const db = new Database(dbPath);
+  try {
+    await sql`
+      CREATE TABLE IF NOT EXISTS users (
+        id SERIAL PRIMARY KEY,
+        email TEXT UNIQUE NOT NULL,
+        password TEXT NOT NULL,
+        name TEXT,
+        plan TEXT DEFAULT 'free',
+        stripe_customer_id TEXT,
+        stripe_subscription_id TEXT,
+        usage_count INTEGER DEFAULT 0,
+        usage_reset_date TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `;
 
-// Initialize tables
-db.exec(`
-  CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    email TEXT UNIQUE NOT NULL,
-    password TEXT NOT NULL,
-    name TEXT,
-    plan TEXT DEFAULT 'free',
-    stripe_customer_id TEXT,
-    stripe_subscription_id TEXT,
-    usage_count INTEGER DEFAULT 0,
-    usage_reset_date TEXT,
-    created_at TEXT DEFAULT CURRENT_TIMESTAMP
-  );
+    await sql`
+      CREATE TABLE IF NOT EXISTS usage_logs (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER,
+        tool_name TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `;
 
-  CREATE TABLE IF NOT EXISTS usage_logs (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER,
-    tool_name TEXT NOT NULL,
-    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id)
-  );
-
-  CREATE TABLE IF NOT EXISTS api_keys (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER NOT NULL,
-    key TEXT UNIQUE NOT NULL,
-    name TEXT,
-    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id)
-  );
-`);
-
-export function getUser(email) {
-  return db.prepare('SELECT * FROM users WHERE email = ?').get(email);
-}
-
-export function getUserById(id) {
-  return db.prepare('SELECT * FROM users WHERE id = ?').get(id);
-}
-
-export function createUser(email, hashedPassword, name = '') {
-  const today = new Date().toISOString().split('T')[0];
-  const stmt = db.prepare('INSERT INTO users (email, password, name, usage_reset_date) VALUES (?, ?, ?, ?)');
-  return stmt.run(email, hashedPassword, name, today);
-}
-
-export function updateUserPlan(userId, plan, stripeCustomerId, stripeSubscriptionId) {
-  const stmt = db.prepare('UPDATE users SET plan = ?, stripe_customer_id = ?, stripe_subscription_id = ? WHERE id = ?');
-  return stmt.run(plan, stripeCustomerId, stripeSubscriptionId, userId);
-}
-
-export function incrementUsage(userId) {
-  const user = getUserById(userId);
-  const today = new Date().toISOString().split('T')[0];
-
-  if (user.usage_reset_date !== today) {
-    // Reset usage for new day
-    db.prepare('UPDATE users SET usage_count = 1, usage_reset_date = ? WHERE id = ?').run(today, userId);
-  } else {
-    db.prepare('UPDATE users SET usage_count = usage_count + 1 WHERE id = ?').run(userId);
+    initialized = true;
+    console.log('Database initialized');
+  } catch (error) {
+    // 테이블이 이미 존재하면 무시
+    if (!error.message?.includes('already exists')) {
+      console.error('DB init error:', error);
+    }
+    initialized = true;
   }
 }
 
-export function getUserUsage(userId) {
-  const user = getUserById(userId);
+export async function getUser(email) {
+  await initDB();
+  const { rows } = await sql`SELECT * FROM users WHERE email = ${email}`;
+  return rows[0];
+}
+
+export async function getUserById(id) {
+  await initDB();
+  const { rows } = await sql`SELECT * FROM users WHERE id = ${id}`;
+  return rows[0];
+}
+
+export async function createUser(email, hashedPassword, name = '') {
+  await initDB();
+  const today = new Date().toISOString().split('T')[0];
+  const { rows } = await sql`
+    INSERT INTO users (email, password, name, usage_reset_date)
+    VALUES (${email}, ${hashedPassword}, ${name}, ${today})
+    RETURNING id
+  `;
+  return { lastInsertRowid: rows[0].id };
+}
+
+export async function updateUserPlan(userId, plan, customerId, subscriptionId) {
+  await initDB();
+  await sql`
+    UPDATE users
+    SET plan = ${plan},
+        stripe_customer_id = ${customerId},
+        stripe_subscription_id = ${subscriptionId}
+    WHERE id = ${userId}
+  `;
+}
+
+export async function incrementUsage(userId) {
+  await initDB();
+  const user = await getUserById(userId);
+  const today = new Date().toISOString().split('T')[0];
+
+  if (user.usage_reset_date !== today) {
+    await sql`UPDATE users SET usage_count = 1, usage_reset_date = ${today} WHERE id = ${userId}`;
+  } else {
+    await sql`UPDATE users SET usage_count = usage_count + 1 WHERE id = ${userId}`;
+  }
+}
+
+export async function getUserUsage(userId) {
+  await initDB();
+  const user = await getUserById(userId);
+  if (!user) return 0;
+
   const today = new Date().toISOString().split('T')[0];
 
   if (user.usage_reset_date !== today) {
@@ -86,18 +101,18 @@ export function getUserUsage(userId) {
   return user.usage_count || 0;
 }
 
-export function logUsage(userId, toolName) {
-  const stmt = db.prepare('INSERT INTO usage_logs (user_id, tool_name) VALUES (?, ?)');
-  return stmt.run(userId, toolName);
+export async function logUsage(userId, toolName) {
+  await initDB();
+  await sql`INSERT INTO usage_logs (user_id, tool_name) VALUES (${userId}, ${toolName})`;
 }
 
-export function getUsageStats(userId) {
-  return db.prepare(`
+export async function getUsageStats(userId) {
+  await initDB();
+  const { rows } = await sql`
     SELECT tool_name, COUNT(*) as count
     FROM usage_logs
-    WHERE user_id = ?
+    WHERE user_id = ${userId}
     GROUP BY tool_name
-  `).all(userId);
+  `;
+  return rows;
 }
-
-export default db;

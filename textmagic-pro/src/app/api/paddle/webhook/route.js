@@ -14,7 +14,7 @@ export async function POST(request) {
         const { custom_data, status, items } = body.data;
 
         if (status === 'active' && custom_data?.user_email) {
-          const user = getUser(custom_data.user_email);
+          const user = await getUser(custom_data.user_email);
 
           if (user) {
             // 가격 ID로 플랜 결정
@@ -25,7 +25,7 @@ export async function POST(request) {
               plan = 'business';
             }
 
-            updateUserPlan(
+            await updateUserPlan(
               user.id,
               plan,
               body.data.customer_id,
@@ -43,10 +43,10 @@ export async function POST(request) {
         const { custom_data } = body.data;
 
         if (custom_data?.user_email) {
-          const user = getUser(custom_data.user_email);
+          const user = await getUser(custom_data.user_email);
 
           if (user) {
-            updateUserPlan(user.id, 'free', null, null);
+            await updateUserPlan(user.id, 'free', null, null);
             console.log(`User ${user.email} downgraded to free`);
           }
         }
